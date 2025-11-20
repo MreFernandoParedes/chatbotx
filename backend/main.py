@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from rag import answer_question, build_or_load_index
+from .rag import answer_question, build_or_load_index
 
 app = FastAPI(
     title="Chatbot RAG Consular",
