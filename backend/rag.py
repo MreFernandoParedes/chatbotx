@@ -1,6 +1,5 @@
 # backend/rag.py
 
-
 from __future__ import annotations
 
 import json
@@ -124,7 +123,7 @@ def build_or_load_index(force_rebuild: bool = False) -> List[Chunk]:
     serializable = [
         {"id": c.id, "text": c.text, "embedding": c.embedding} for c in index
     ]
-    INDEX_PATH.write_text(json.dumps(serializable), encoding="utf-8")
+    INDEX_PATH.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
 
     _index_cache = index
     print("[RAG] Índice creado y guardado en index.json")
@@ -144,13 +143,20 @@ def _retrieve_relevant_chunks(question: str, k: int = 3) -> List[Chunk]:
     return top_chunks
 
 
-def answer_question(question: str, k: int = 3) -> str:
+def answer_question(question: str, k: int = 3) -> Dict[str, Any]:
     """
-    Punto de entrada principal: recibe la pregunta y devuelve una respuesta
-    usando RAG sobre knowledge.txt.
+    Punto de entrada principal: recibe la pregunta y devuelve un diccionario con:
+      - answer: texto final
+      - retrieved_chunks: lista de textos de los trozos usados
+      - source_files: lista de fuentes (en este caso, knowledge.txt)
+      - model_name: modelo de chat usado
+      - temperature: temperatura usada
+      - usage: dict con input_tokens, output_tokens, total_tokens
     """
+    # 1) Recuperar los chunks más relevantes
     top_chunks = _retrieve_relevant_chunks(question, k=k)
 
+    # 2) Preparar contexto y prompts
     context_text = "\n\n---\n\n".join(c.text for c in top_chunks)
 
     system_prompt = (
@@ -167,6 +173,7 @@ def answer_question(question: str, k: int = 3) -> str:
         "Responde de forma estructurada y fácil de entender."
     )
 
+    # 3) Llamada al modelo de chat
     completion = client.chat.completions.create(
         model=CHAT_MODEL,
         messages=[
@@ -176,4 +183,26 @@ def answer_question(question: str, k: int = 3) -> str:
         temperature=0.2,
     )
 
-    return completion.choices[0].message.content.strip()
+    answer_text = completion.choices[0].message.content.strip() if completion.choices else ""
+
+    # 4) Extraer tokens (usage)
+    usage: Dict[str, Any] = {}
+    if hasattr(completion, "usage") and completion.usage is not None:
+        usage = {
+            "input_tokens": getattr(completion.usage, "prompt_tokens", None),
+            "output_tokens": getattr(completion.usage, "completion_tokens", None),
+            "total_tokens": getattr(completion.usage, "total_tokens", None),
+        }
+
+    # 5) Preparar datos de RAG para logging
+    retrieved_chunks = [c.text for c in top_chunks]
+    source_files = ["knowledge.txt" for _ in top_chunks]
+
+    return {
+        "answer": answer_text,
+        "retrieved_chunks": retrieved_chunks,
+        "source_files": source_files,
+        "model_name": CHAT_MODEL,
+        "temperature": 0.2,
+        "usage": usage,
+    }
