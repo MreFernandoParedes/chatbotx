@@ -13,8 +13,8 @@ from pydantic import BaseModel
 
 
 
-from rag import answer_question, build_or_load_index
-from db_logging import init_db, save_interaction, get_interactions
+from .rag import answer_question, build_or_load_index
+from .db_logging import init_db, save_interaction, get_interactions
 
 
 app = FastAPI(
